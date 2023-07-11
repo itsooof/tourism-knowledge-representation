@@ -1,0 +1,50 @@
+# Importing necessary libraries from neo4j import GraphDatabase 
+ 
+# Initializing the driver uri = "bolt://localhost:7687" username = "neo4j" password = "123456kav" 
+driver = GraphDatabase.driver(uri, auth=(username, password)) 
+ 
+ 
+# Defining function to manage logistics def manage_logistics():     # Start session     with driver.session() as session:         # Querying for route information 
+        route_query = ''' 
+        MATCH (delhi:City {name: 'Delhi'}), (ladakh:City {name: 
+'Ladakh'}) 
+        CALL algo.shortestPath.stream(delhi, ladakh, 'distance') 
+        YIELD nodeId, cost         RETURN algo.asNode(nodeId).name AS city, cost 
+        ''' 
+        route_results = session.run(route_query) 
+        # Printing route information         print("Route Information:")         for result in route_results: 
+            print(f"{result['city']} - {result['cost']} km")         print("\n") 
+ 
+        # Querying for budget information 
+        budget_query = ''' 
+        MATCH (delhi:City {name: 'Delhi'})-[:HAS_BUDGET]-
+>(budget:Budget)-[:HAS_BUDGET]->(ladakh:City {name: 'Ladakh'}) 
+        RETURN budget.amount AS budget 
+        ''' 
+        budget_result = session.run(budget_query).single()         budget = budget_result['budget']         # Printing budget information         print("Budget Information:")         print(f"Total budget: {budget} INR")         print("\n") 
+ 
+        # Querying for emergency information 
+        emergency_query = ''' 
+        MATCH (delhi:City {name: 'Delhi'})-[:HAS_EMERGENCY]-
+>(emergency:Emergency)<-[:HAS_EMERGENCY]-(ladakh:City {name: 
+'Ladakh'}) 
+        RETURN emergency.name AS emergency_name, emergency.contact AS emergency_contact         ''' 
+        emergency_result = session.run(emergency_query).single()         emergency_name = emergency_result['emergency_name']         emergency_contact = emergency_result['emergency_contact'] 
+        # Printing emergency information         print("Emergency Information:") 
+        print(f"Emergency contact: {emergency_name} - 
+{emergency_contact}")         print("\n") 
+ 
+        # Querying for backup plan information 
+        backup_query = ''' 
+        MATCH (delhi:City {name: 'Delhi'})-[:HAS_BACKUP]-
+>(backup:Backup)<-[:HAS_BACKUP]-(ladakh:City {name: 'Ladakh'})         RETURN backup.name AS backup_name, backup.details AS backup_details         ''' 
+        backup_results = session.run(backup_query)         backup_plans = []         for result in backup_results:             backup_plans.append(f"{result['backup_name']}: 
+{result['backup_details']}") 
+        # Printing backup plan information         print("Backup Plan Information:")         for backup in backup_plans: 
+            print(backup)         print("\n") 
+ 
+# Calling the manage_logistics 
+function manage_logistics() 
+ 
+# Closing the driver 
+driver.close() 

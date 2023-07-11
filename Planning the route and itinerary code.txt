@@ -1,0 +1,97 @@
+from neo4j import GraphDatabase, basic_auth 
+from graphviz import Digraph # Define Neo4j credentials uri = "bolt://localhost:7687" user = "neo4j" 
+password = "123456kav" 
+ 
+# Connect to Neo4j 
+driver = GraphDatabase.driver(uri, auth=basic_auth(user, password))  
+# Define a function to create the graph def create_graph(tx): 
+    # Define the domain and predicates 
+    domains = ["Destinations", "Attractions", "Routes"] 
+    predicates = ["connects", "distance", "time", "has_attraction"]  
+    # Create the domain and predicates nodes     for domain in domains: 
+        tx.run("MERGE (:Domain {name: $name})", name=domain)     for predicate in predicates: 
+
+        tx.run("MERGE (:Predicate {name: $name})", name=predicate)  
+    # Define the facts about the domain     facts = [ 
+        {"source": "Delhi", "dest": "Manali", "distance": 1055, 
+"time": 25}, 
+        {"source": "Manali", "dest": "Leh", "distance": 474, "time": 
+10},         {"source": "Leh", "dest": "Srinagar", "distance": 1030, "time": 23}, 
+        {"source": "Srinagar", "dest": "Jammu", "distance": 268, 
+"time": 7}, 
+        {"source": "Jammu", "dest": "Delhi", "distance": 586, "time":
+13}, 
+        {"source": "Manali", "attraction": "Rohtang Pass"}, 
+        {"source": "Manali", "attraction": "Solang Valley"}, 
+        {"source": "Leh", "attraction": "Pangong Tso Lake"}, 
+        {"source": "Srinagar", "attraction": "Dal Lake"}     ] 
+ 
+    # Create the nodes and relationships for the facts     for fact in facts:         if "dest" in fact: 
+            tx.run( 
+                "MERGE (d:Destination {name: $name})" 
+                "MERGE (p:Predicate {name: 'connects'})" 
+                "MERGE (s:Destination {name: $source})" 
+                "MERGE (s)-[:connects {distance: $distance, time: 
+$time}]->(d)" 
+                , name=fact["dest"], source=fact["source"], distance=fact["distance"], time=fact["time"] 
+            )         elif "attraction" in fact: 
+            tx.run( 
+                "MERGE (a:Attraction {name: $name})" 
+                "MERGE (p:Predicate {name: 'has_attraction'})" 
+                "MERGE (d:Destination {name: $source})" 
+                "MERGE (d)-[:has_attraction]->(a)" 
+                , name=fact["attraction"], source=fact["source"] 
+            ) 
+ 
+# Define a function to query the graph for the shortest path def shortest_path(tx, source, destination): 
+    result = tx.run( 
+        "MATCH (s:Destination {name: $source})-[:connects*]-
+>(d:Destination {name: $destination}), " 
+        "p = shortestPath((s)-[:connects*]->(d)) " 
+        "WITH REDUCE(dist = 0, r IN relationships(p) | dist + 
+r.distance) AS distance, " 
+        "REDUCE(time = 0, r IN relationships(p) | time + r.time) AS time, " 
+        "[n IN nodes(p) | n.name] AS path " 
+        "RETURN path, distance, time " 
+        "ORDER BY distance ASC LIMIT 1" 
+        , source=source, destination=destination 
+    ) 
+    return result.single() 
+ 
+# Connect to Neo4j and create the graph with driver.session() as session: 
+    session.execute_write(create_graph) 
+
+ 
+# Query the graph for the shortest path with driver.session() as session: 
+    result = session.execute_read(shortest_path, "Delhi", "Leh")     print(f"The shortest path from Delhi to Leh is: 
+{result['path']}") 
+    print(f"The distance is: {result['distance']} km")     print(f"The travel time is: {result['time']} hours")  
+# Define a function to visualize the graph using Graphviz def visualize_graph(tx): 
+    result = tx.run( 
+        "MATCH (n)-[r]->(m) RETURN n.name AS source, r.name AS predicate, m.name AS destination" 
+    )     graph = Digraph()     for record in result:         graph.edge(record["source"], record["destination"], label=record["predicate"])     return graph 
+ 
+# Visualize the graph using Graphviz def visualize_graph(tx, filename): 
+    dot = Digraph(comment='Destinations and Attractions') 
+     result = tx.run("MATCH (d:Destination) RETURN d.name")     for record in result: 
+        dot.node(record["d.name"], record["d.name"]) 
+     result = tx.run("MATCH (a:Attraction) RETURN a.name, a.type")     for record in result:         if record["a.type"] == "sightseeing": 
+            dot.node(record["a.name"], record["a.name"], shape='box')         else: 
+            dot.node(record["a.name"], record["a.name"]) 
+ 
+    result = tx.run("MATCH (:Destination)-[r:ROUTE]->(:Destination) RETURN r.distance")     for record in result: 
+        dot.attr('edge', {'label': str(record["r.distance"])})         dot.edge(record.start_node["name"], record.end_node["name"]) 
+     result = tx.run("MATCH (:Destination)-[r:ATTRACTION]->(:Attraction) RETURN r")     for record in result: 
+        dot.edge(record.start_node["name"], record.end_node["name"], label=record["r"]) 
+     dot.render(filename, view=True) 
+ with driver.session() as session: 
+    session.execute_read(visualize_graph, "destinations.gv")  
+# Add dummy nodes and relationships with driver.session() as session:     session.run("CREATE (:Dummy)") 
+    session.run("MATCH (n:Destination) WHERE NOT ()-[:ROUTE]->(n) CREATE (d:Dummy)-[:ROUTE {distance: 0}]->(n)") 
+    session.run("MATCH (n:Attraction) WHERE NOT ()-[:ATTRACTION]->(n) CREATE (d:Dummy)-[:ATTRACTION {type: 'dummy'}]->(n)") 
+    session.run("MATCH (n:Attraction) WHERE NOT (n)-[:ATTRACTION]->() 
+CREATE (n)-[:ATTRACTION {type: 'dummy'}]->(d:Dummy)") 
+    session.run("MATCH (n:Dummy) WHERE NOT ()-[:ROUTE]->(n) CREATE 
+(n)-[:ROUTE {distance: 0}]->(d:Dummy)") 
+    session.run("MATCH (n:Dummy) WHERE NOT (n)-[:ATTRACTION]->() 
+CREATE (d:Dummy)-[:ATTRACTION {type: 'dummy'}]->(n)")  

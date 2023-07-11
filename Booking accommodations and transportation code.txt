@@ -1,0 +1,34 @@
+from neo4j import GraphDatabase  
+# Connect to the Neo4j database uri = "bolt://localhost:7687" user = "neo4j" password = "123456kav" 
+driver = GraphDatabase.driver(uri, auth=(user, password))  
+# Define the Cypher queries 
+create_graph = """ 
+    MERGE (d:City {name: 'Delhi'}) 
+    MERGE (l:City {name: 'Ladakh'}) 
+    MERGE (h1:Hotel {name: 'The Oberoi, New Delhi', price: 15000}) 
+    MERGE (h2:Hotel {name: 'The Grand Dragon Ladakh', price: 12000}) 
+    MERGE (t1:Transportation {type: 'Flight', price: 8000})     MERGE (t2:Transportation {type: 'Train', price: 6000}) 
+    MERGE (d)-[:CONNECTED_BY]->(h1)-[:CONNECTED_TO]->(t1)-
+[:CONNECTED_TO]->(h2)-[:CONNECTED_BY]->(l) """  
+query_hotels = """ 
+    MATCH (d:City {name: 'Delhi'})-[:CONNECTED_BY]->(h:Hotel)-
+[:CONNECTED_TO]->(t:Transportation)-[:CONNECTED_TO]->(h2:Hotel)-
+[:CONNECTED_BY]->(l:City {name: 'Ladakh'}) 
+    RETURN h.name AS hotel, h.price AS price, t.type AS transport_type, 
+t.price AS transport_price, h2.name AS hotel2 
+"""  
+query_transportation = """ 
+    MATCH (d:City {name: 'Delhi'})-[:CONNECTED_BY]->(h:Hotel)-
+[:CONNECTED_TO]->(t:Transportation)-[:CONNECTED_TO]->(h2:Hotel)-
+[:CONNECTED_BY]->(l:City {name: 'Ladakh'}) 
+    RETURN t.type AS transport_type, t.price AS price """ 
+ 
+# Create the graph with driver.session() as session: 
+    session.run(create_graph) 
+ 
+# Query the hotels and transportation options with driver.session() as session: 
+    result = session.run(query_hotels)     for record in result: 
+        print(f"{record['hotel']} (₹{record['price']}) -> {record['transport_type']} (₹{record['transport_price']}) -> {record['hotel2']}") 
+     result = session.run(query_transportation)     for record in result: 
+ 
+        print(f"{record['transport_type']} (₹{record['price']})") 
